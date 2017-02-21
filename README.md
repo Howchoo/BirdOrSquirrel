@@ -4,10 +4,19 @@ The smart bird feeder that tweets pictures of anything inside. This app uses a R
 
 ## To run
 
-Install Docker.
-
-Start the Docker container:
+Install Docker, start the Docker container:
 
 ```
-docker run --restart=always --device=/dev/mem:/dev/mem --privileged howchoo/birdorsquirrel:latest
+sudo docker run -d --restart=always \
+        --device=/dev/mem:/dev/mem \
+        --privileged \
+        -e "TWITTER_ACCESS_TOKEN={your access token}" \
+        -e "TWITTER_ACCESS_TOKEN_SECRET={your access token secret}" \
+        -e "TWITTER_CONSUMER_KEY={your consumer key}" \
+        -e "TWITTER_CONSUMER_SECRET={your consumer secret}" \
+        howchoo/birdorsquirrel:latest
 ```
+
+## See on Twitter
+
+https://twitter.com/birdorsquirrel

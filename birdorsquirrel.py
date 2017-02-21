@@ -4,17 +4,15 @@ import datetime
 import logging
 import pytz
 import RPi.GPIO as GPIO
+import os
 import time
 import tweepy
 
 from astral import Astral
 from picamera import PiCamera
-from settings import (consumer_key, consumer_secret,
-                      access_token, access_token_secret)
 
 
-
-# logging.basicConfig(filename='/var/log/birdorsquirrel.log', level=logging.DEBUG)
+# Set up logger
 logger = logging.getLogger('birdorsquirrel')
 handler = logging.FileHandler('/var/log/birdorsquirrel.log')
 formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
@@ -30,24 +28,34 @@ class BirdException(Exception):
 class BirdOrSquirrel():
     motion_timeout = 60  # 1 minute
     tmp_img = '/tmp/twitter-photo.jpg'
-    city_name = 'San Francisco'
 
     def __init__(self, *args, **kwargs):
         logger.info('BirdOrSquirrel init.')
         self.setup_twitter()
+
         # Set up pins for motion detection
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(3, GPIO.IN)
+
         # Astral settings
+        city_name = os.environ.get('CITY', 'San Francisco')
         self.astral = Astral()
         self.astral.solar_depression = 'civil'
-        self.city = self.astral[self.city_name]
+        self.city = self.astral[city_name]
+
         logger.info('BirdOrSquirrel initialized.')
 
     def setup_twitter(self):
+        # Retrieve the secrets from the environment
+        access_token = os.environ.get('TWITTER_ACCESS_TOKEN')
+        access_token_secret = os.environ.get('TWITTER_ACCESS_TOKEN_SECRET')
+        consumer_key = os.environ.get('TWITTER_CONSUMER_KEY')
+        consumer_secret = os.environ.get('TWITTER_CONSUMER_SECRET')
+
         if not (access_token and access_token_secret and consumer_key
                 and consumer_secret):
-            raise BirdException('Add your Twitter API credentials to settings.py.')
+            raise BirdException('Twitter credentials must be passed as '
+                                'environment variables.')
 
         # Authenticate
         auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
@@ -56,6 +64,11 @@ class BirdOrSquirrel():
         logger.info('twitter authenticated.')
 
     def take_image_and_tweet(self):
+        # If it's not daylight, skip
+        if not self.is_daylight():
+            logger.info('Skipping picture, too dark.')
+            return
+
         # Set up the camera
         camera = PiCamera()
         camera.vflip = True
@@ -74,32 +87,13 @@ class BirdOrSquirrel():
 
     def is_daylight(self):
         sun = self.city.sun(date=datetime.date.today(), local=True)
-        dawn = sun['dawn']
-        dusk = sun['dusk']
+        sunrise = sun['sunrise']
+        sunset = sun['sunset']
 
         now = datetime.datetime.now()
         now = pytz.timezone(self.city.timezone).localize(now)
 
-        return (now > dawn and now < dusk)
-
-    def seconds_until_sunrise(self):
-        sun_today = self.city.sun(date=datetime.date.today(), local=True)
-        dawn_today = sun_today['dawn']
-
-        sun_tomorrow = self.city.sun(date=datetime.date.today() + datetime.timedelta(days=1), local=True)
-        dawn_tomorrow = sun_tomorrow['dawn']
-
-        now = datetime.datetime.now()
-        now = pytz.timezone(self.city.timezone).localize(now)
-
-        if now < dawn_today:
-            # return time until sunrise today
-            delta = dawn_today - now
-        else:
-            # return time until sunrise tomorrow
-            delta = dawn_tomorrow - now
-
-        return delta.total_seconds()
+        return (now > sunrise and now < sunset)
 
     def listen(self):
         """Listen for motion to be detected."""
@@ -109,25 +103,10 @@ class BirdOrSquirrel():
                 self.take_image_and_tweet()
                 time.sleep(self.motion_timeout)
 
-    def tweet_minutely(self):
-        while True:
-            if not self.is_daylight():
-                seconds = self.seconds_until_sunrise()
-                logger.info('Pausing until daylight. {0} seconds.'.format(seconds))
-                time.sleep(seconds)
-            self.take_image_and_tweet()
-            time.sleep(60)
-
-    def do_nothing(self):
-        while True:
-            time.sleep(60)
-
 
 if __name__ == '__main__':
     try:
         b = BirdOrSquirrel()
         b.listen()
-        # b.tweet_minutely()
-        # b.do_nothing()
     except BirdException as e:
         logger.error(e)

@@ -43,6 +43,8 @@ class BirdOrSquirrel():
         self.astral.solar_depression = 'civil'
         self.city = self.astral[city_name]
 
+        self.camera_ready = False
+
         logger.info('BirdOrSquirrel initialized.')
 
     def setup_twitter(self):
@@ -63,27 +65,18 @@ class BirdOrSquirrel():
         self.twitter_api = tweepy.API(auth)
         logger.info('twitter authenticated.')
 
-    def take_image_and_tweet(self):
-        # If it's not daylight, skip
-        if not self.is_daylight():
-            logger.info('Skipping picture, too dark.')
-            return
-
-        # Set up the camera
-        camera = PiCamera()
-        camera.vflip = True
-        camera.brightness = 50
-        camera.contrast = 10
+    def take_picture_and_tweet(self):
         # Take the picture
-        camera.start_preview()
-        time.sleep(5)
-        camera.capture(self.tmp_img)
-        camera.stop_preview()
+        self.camera.capture(self.tmp_img)
+        self.camera.stop_preview()
         logger.info('Picture taken.')
 
         # Send the tweet
         self.twitter_api.update_with_media(self.tmp_img)
         logger.info('Tweet sent.')
+
+        # Tear down the camera
+        self.teardown_camera()
 
     def is_daylight(self):
         sun = self.city.sun(date=datetime.date.today(), local=True)
@@ -95,13 +88,54 @@ class BirdOrSquirrel():
 
         return (now > sunrise and now < sunset)
 
+    def setup_camera_and_wait(self):
+        # The camera needs a few seconds to focus so we want to make sure the
+        # bird is still there when it's ready for a picture
+        self.setup_camera()
+
+        # Wait n seconds to give the camera time to focus
+        time.sleep(3)
+
+        # Give the bird 60 seconds to break the beam again
+        end_time = time.time() + 60
+        while time.time() < end_time:
+            if not GPIO.input(3):
+                self.take_picture_and_tweet()
+                time.sleep(self.motion_timeout)
+                return
+
+        # If no more motion was detected, teardown camera
+        logger.info('No more motion detected.')
+        self.teardown_camera()
+
+    def setup_camera(self):
+        """Set up the camera"""
+        logger.info('Setting up camera.')
+        self.camera = PiCamera()
+        self.camera.vflip = True
+        self.camera.brightness = 50
+        self.camera.contrast = 10
+        self.camera.start_preview()
+        self.camera_ready = True
+
+    def teardown_camera(self):
+        """Tear down the camera so other processes can use it"""
+        logger.info('Tearing down camera.')
+        del self.camera
+        self.camera_ready = False
+
     def listen(self):
-        """Listen for motion to be detected."""
+        """Listen for motion to be detected"""
+        logger.info('Listening.')
         while True:
             if not GPIO.input(3):
                 logger.info('Motion detected.')
-                self.take_image_and_tweet()
-                time.sleep(self.motion_timeout)
+
+                if not self.is_daylight():
+                    logger.info('Skipping picture, too dark.')
+                    continue
+
+                self.setup_camera_and_wait()
 
 
 if __name__ == '__main__':

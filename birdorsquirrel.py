@@ -133,6 +133,7 @@ class BirdOrSquirrel():
 
                 if not self.is_daylight():
                     logger.info('Skipping picture, too dark.')
+                    time.sleep(10)
                     continue
 
                 self.setup_camera_and_wait()

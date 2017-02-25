@@ -9,7 +9,9 @@ Install Docker, start the Docker container:
 ```
 sudo docker run -d --restart=always \
         --device=/dev/mem:/dev/mem \
+        --name=birdorsquirrel \
         --privileged \
+        -e "TZ=America/Los_Angeles" \
         -e "TWITTER_ACCESS_TOKEN={your access token}" \
         -e "TWITTER_ACCESS_TOKEN_SECRET={your access token secret}" \
         -e "TWITTER_CONSUMER_KEY={your consumer key}" \

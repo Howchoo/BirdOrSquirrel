@@ -96,8 +96,8 @@ class BirdOrSquirrel():
         # Wait n seconds to give the camera time to focus
         time.sleep(3)
 
-        # Give the bird 60 seconds to break the beam again
-        end_time = time.time() + 60
+        # Give the bird 5 minutes to break the beam again
+        end_time = time.time() + 60 * 5
         while time.time() < end_time:
             if not GPIO.input(3):
                 self.take_picture_and_tweet()
